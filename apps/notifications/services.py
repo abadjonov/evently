@@ -1,5 +1,6 @@
 import logging
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import httpx
@@ -241,3 +242,29 @@ def send_event_reminder(registration: Registration) -> bool:
             type(exc).__name__,
         )
         return False
+
+
+@dataclass(frozen=True)
+class ReminderStats:
+    sent: int = 0
+    failed: int = 0
+    skipped: int = 0
+
+
+def process_due_reminders(
+    *,
+    now: datetime | None = None,
+    hours_before: int | None = None,
+) -> ReminderStats:
+    """Vaqti kelgan barcha tadbir eslatmalarini yuboradi va natija sonini qaytaradi."""
+    sent = 0
+    failed = 0
+    registrations = get_due_reminder_registrations(now=now, hours_before=hours_before)
+    for registration in registrations:
+        if send_event_reminder(registration):
+            registration.reminder_sent = True
+            registration.save(update_fields=["reminder_sent"])
+            sent += 1
+        else:
+            failed += 1
+    return ReminderStats(sent=sent, failed=failed)
