@@ -95,16 +95,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("DB_NAME"),
-        "USER": env("DB_USER"),
-        "PASSWORD": env("DB_PASSWORD"),
-        "HOST": env("DB_HOST"),
-        "PORT": env("DB_PORT"),
+# Production'da (Render) DATABASE_URL berilsa env.db(), aks holda lokal DB_* ishlatiladi
+if env("DATABASE_URL", default=""):
+    db_config = env.db("DATABASE_URL")
+    db_config["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=600)
+    db_config["CONN_HEALTH_CHECKS"] = True
+    DATABASES = {"default": db_config}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": env("DB_NAME"),
+            "USER": env("DB_USER"),
+            "PASSWORD": env("DB_PASSWORD"),
+            "HOST": env("DB_HOST"),
+            "PORT": env("DB_PORT"),
+        }
     }
-}
 
 AUTH_USER_MODEL = "users.User"
 
