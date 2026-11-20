@@ -96,3 +96,73 @@ erDiagram
         datetime cancelled_at "null bo'lishi mumkin"
     }
 ```
+
+## Lokal ishga tushirish (Windows / PowerShell)
+
+**Talablar:** Python 3.11+ va PostgreSQL o‘rnatilgan bo‘lishi kerak.
+
+```powershell
+# 1. Repozitoriyni klonlash
+git clone https://github.com/abadjonov/evently.git
+cd evently
+
+# 2. Virtual muhit yaratish va faollashtirish
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3. Kutubxonalarni o'rnatish
+pip install -r requirements.txt
+
+# 4. .env faylini yaratish va qiymatlarni to'ldirish
+Copy-Item .env.example .env
+
+# 5. PostgreSQL'da baza yaratish (yoki pgAdmin orqali)
+createdb -U postgres evently
+
+# 6. Migratsiyalarni qo'llash
+python manage.py migrate
+
+# 7. Admin foydalanuvchi yaratish (email + parol)
+python manage.py createsuperuser
+
+# 8. Backend serverni ishga tushirish
+python manage.py runserver
+
+# 9. Telegram botni alohida PowerShell oynasida ishga tushirish
+python -m bot.main
+
+# 10. Eslatmalarni qo'lda tekshirish
+python manage.py send_event_reminders
+```
+
+### Eslatmalar uchun cron sozlash (Linux / server)
+
+Tadbir eslatmalari har 10 daqiqada avtomatik yuborilishi uchun `crontab -e` ga quyidagi qatorni qo‘shing (`REMINDER_HOURS_BEFORE` `.env` orqali boshqariladi):
+
+```cron
+*/10 * * * * cd /path/to/evently && .venv/bin/python manage.py send_event_reminders >> /var/log/evently_reminders.log 2>&1
+```
+
+## Muhit o‘zgaruvchilari (`.env`)
+
+Barcha maxfiy ma’lumotlar faqat `.env` faylida saqlanadi (`.env` `.gitignore` ga kiritilgan, namuna sifatida [`.env.example`](.env.example) berilgan):
+
+| O‘zgaruvchi | Default / Misol | Tavsif |
+| --- | --- | --- |
+| `DEBUG` | `True` (`False` prod'da) | Django debug rejimi |
+| `SECRET_KEY` | `change-me` | Django maxfiy kaliti (kamida 32+ belgili tasodifiy satr tavsiya etiladi) |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Ruxsat etilgan hostlar (vergul bilan) |
+| `TIME_ZONE` | `Asia/Tashkent` | Vaqt mintaqasi (`USE_TZ=True`) |
+| `DB_NAME` | `evently` | PostgreSQL baza nomi |
+| `DB_USER` | `evently` | PostgreSQL foydalanuvchisi |
+| `DB_PASSWORD` | `evently` | PostgreSQL paroli |
+| `DB_HOST` | `localhost` | PostgreSQL host manzili |
+| `DB_PORT` | `5432` | PostgreSQL porti |
+| `ACCESS_TOKEN_LIFETIME_MINUTES` | `60` | JWT `access` token amal qilish muddati (daqiqa) |
+| `REFRESH_TOKEN_LIFETIME_DAYS` | `7` | JWT `refresh` token amal qilish muddati (kun) |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Frontend domenlari (vergul bilan) |
+| `TELEGRAM_BOT_TOKEN` | `@BotFather` tokeni | Telegram Bot API tokeni |
+| `TELEGRAM_BOT_USERNAME` | `EventlyBot` | Bot username'i (`@` siz, deep-link havola uchun) |
+| `BOT_API_SECRET` | tasodifiy uzun satr | Bot → backend `/telegram/confirm/` so‘rovlari uchun `X-Bot-Secret` kaliti |
+| `BACKEND_API_URL` | `http://localhost:8000/api/v1` | Bot ulanadigan backend API manzili |
+| `REMINDER_HOURS_BEFORE` | `24` | Tadbir boshlanishidan necha soat oldin eslatma yuborilishi |
