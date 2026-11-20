@@ -91,3 +91,55 @@ def test_atomic_update_skips_registration_already_claimed_by_parallel_cron(user,
     assert stats.failed == 0
     assert stats.skipped == 1
     mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(REMINDER_HOURS_BEFORE=24)
+def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, admin_user):
+    user.telegram_chat_id = 1001
+    user.save(update_fields=["telegram_chat_id"])
+    cancelled_user = User.objects.create_user(
+        email="cancelled@example.com",
+        password="StrongPassword123!",
+        telegram_chat_id=1002,
+    )
+    unlinked_user = User.objects.create_user(
+        email="unlinked@example.com",
+        password="StrongPassword123!",
+    )
+
+    due_event = _create_event(admin_user, hours_from_now=6, title="Yaqin ochiq tadbir")
+    far_event = _create_event(admin_user, hours_from_now=48, title="Uzoq tadbir")
+    started_event = _create_event(admin_user, hours_from_now=-1, title="Boshlangan tadbir")
+    closed_event = _create_event(
+        admin_user,
+        hours_from_now=6,
+        status=Event.Status.CLOSED,
+        title="Yopilgan tadbir",
+    )
+
+    eligible = Registration.objects.create(user=user, event=due_event)
+    skipped_regs = [
+        Registration.objects.create(user=user, event=far_event),
+        Registration.objects.create(user=user, event=started_event),
+        Registration.objects.create(
+            user=cancelled_user,
+            event=due_event,
+            status=Registration.Status.CANCELLED,
+        ),
+        Registration.objects.create(user=user, event=closed_event),
+        Registration.objects.create(user=unlinked_user, event=due_event),
+    ]
+
+    with patch("apps.notifications.services.send_message", return_value=True) as mock_send:
+        call_command("send_event_reminders", stdout=StringIO())
+
+    assert mock_send.call_count == 1
+    assert mock_send.call_args.args[0] == 1001
+    assert "Yaqin ochiq tadbir" in mock_send.call_args.args[1]
+
+    eligible.refresh_from_db()
+    assert eligible.reminder_sent is True
+    for reg in skipped_regs:
+        reg.refresh_from_db()
+        assert reg.reminder_sent is False
