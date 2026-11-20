@@ -643,6 +643,7 @@ Field validation xatolari DRF'ning standart formatida qolishi mumkin:
 class IsAdmin(BasePermission):
     """Faqat role='admin' bo‘lgan foydalanuvchilarga ruxsat beradi."""
 
+
 class IsAdminOrReadOnly(BasePermission):
     """GET, HEAD, OPTIONS — hammaga; qolgan metodlar — faqat adminga."""
 ```
