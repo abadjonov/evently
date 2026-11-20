@@ -87,6 +87,16 @@ UNREGISTER_ERROR_EXAMPLES = [
     ),
 ]
 
+CAPACITY_TOO_LOW_EXAMPLE = OpenApiExample(
+    "Joylar soni faol qatnashuvchilardan kam",
+    value={
+        "detail": "Joylar soni hozirgi qatnashuvchilar sonidan kam bo'lishi mumkin emas.",
+        "code": "capacity_too_low",
+    },
+    response_only=True,
+    status_codes=["400"],
+)
+
 EVENT_LIST_PARAMETERS = [
     OpenApiParameter(
         name="page",
@@ -166,9 +176,10 @@ EVENT_LIST_PARAMETERS = [
         tags=["events"],
         summary="Tadbirni qisman tahrirlash (faqat Admin)",
         description="Faqat admin tadbir ma'lumotlarini `PATCH` orqali yangilay oladi.",
+        examples=[CAPACITY_TOO_LOW_EXAMPLE],
         responses={
             200: EventDetailSerializer,
-            400: OpenApiResponse(description="Validatsiya yoki capacity_too_low xatosi"),
+            400: BusinessErrorSerializer,
             401: OpenApiResponse(description="Avtorizatsiya talab qilinadi"),
             403: OpenApiResponse(description="Faqat admin uchun ruxsat etilgan"),
             404: OpenApiResponse(description="Tadbir topilmadi"),
