@@ -1,10 +1,11 @@
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.events.exceptions import BusinessError
@@ -183,3 +184,28 @@ def notify_registration(registration_id: int) -> None:
     admin_text = _build_admin_registration_text(user, event, active_count)
     for chat_id in admin_chat_ids:
         _safe_send_message(chat_id, admin_text)
+
+
+def get_due_reminder_registrations(
+    *,
+    now: datetime | None = None,
+    hours_before: int | None = None,
+) -> QuerySet[Registration]:
+    """Eslatma yuborish vaqti kelgan faol ro'yxatdan o'tishlarni qaytaradi."""
+    current_time = now if now is not None else timezone.now()
+    reminder_hours = hours_before if hours_before is not None else settings.REMINDER_HOURS_BEFORE
+    deadline = current_time + timedelta(hours=reminder_hours)
+
+    # N+1 so'rovlar bo'lmasligi uchun user va event bitta SQL JOIN bilan olinadi
+    return (
+        Registration.objects.select_related("user", "event")
+        .filter(
+            status=Registration.Status.ACTIVE,
+            reminder_sent=False,
+            event__status=Event.Status.OPEN,
+            event__start_at__gt=current_time,
+            event__start_at__lte=deadline,
+            user__telegram_chat_id__isnull=False,
+        )
+        .order_by("event__start_at", "id")
+    )
