@@ -17,6 +17,10 @@ env = environ.Env(
     ACCESS_TOKEN_LIFETIME_MINUTES=(int, 60),
     REFRESH_TOKEN_LIFETIME_DAYS=(int, 7),
     CORS_ALLOWED_ORIGINS=(list, ["http://localhost:3000", "http://localhost:5173"]),
+    TELEGRAM_BOT_TOKEN=(str, ""),
+    TELEGRAM_BOT_USERNAME=(str, ""),
+    BOT_API_SECRET=(str, ""),
+    BACKEND_API_URL=(str, "http://localhost:8000/api/v1"),
 )
 
 # Lokal muhitda .env fayli mavjud bo'lsa, undan o'zgaruvchilarni o'qiymiz
@@ -42,6 +46,7 @@ INSTALLED_APPS = [
     "django_filters",
     "apps.users",
     "apps.events",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -141,3 +146,9 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")
+
+# Telegram sozlamalari faqat .env dan o'qiladi, kodga yozilmaydi
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME")
+BOT_API_SECRET = env("BOT_API_SECRET")
+BACKEND_API_URL = env("BACKEND_API_URL")
