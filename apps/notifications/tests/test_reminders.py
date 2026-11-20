@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
@@ -143,3 +144,38 @@ def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, ad
     for reg in skipped_regs:
         reg.refresh_from_db()
         assert reg.reminder_sent is False
+
+
+@pytest.mark.django_db
+@override_settings(REMINDER_HOURS_BEFORE=24)
+def test_telegram_error_does_not_stop_reminder_command(user, admin_user, caplog):
+    user.telegram_chat_id = 1001
+    user.save(update_fields=["telegram_chat_id"])
+    second_user = User.objects.create_user(
+        email="second@example.com",
+        password="StrongPassword123!",
+        telegram_chat_id=1002,
+    )
+    event = _create_event(admin_user, hours_from_now=4)
+    first_reg = Registration.objects.create(user=user, event=event)
+    second_reg = Registration.objects.create(user=second_user, event=event)
+
+    out = StringIO()
+    with (
+        patch(
+            "apps.notifications.services.send_message",
+            side_effect=[RuntimeError("Telegram API uzildi"), True],
+        ) as mock_send,
+        caplog.at_level(logging.ERROR, logger="apps.notifications"),
+    ):
+        call_command("send_event_reminders", stdout=out)
+
+    assert mock_send.call_count == 2
+    first_reg.refresh_from_db()
+    second_reg.refresh_from_db()
+    # Xato bergan yozuv keyingi cron urinishida qayta yuborilishi uchun False qoladi
+    assert first_reg.reminder_sent is False
+    assert second_reg.reminder_sent is True
+    assert "Eslatmalar yuborildi: 1, xatolik: 1." in out.getvalue()
+    assert len(caplog.records) == 1
+    assert "RuntimeError" in caplog.text
