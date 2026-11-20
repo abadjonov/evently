@@ -1,4 +1,4 @@
-from django.db.models import BooleanField, Count, Exists, OuterRef, Q, QuerySet, Value
+from django.db.models import QuerySet
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -201,26 +201,7 @@ class EventViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self) -> QuerySet[Event]:
-        user = self.request.user
-        if user and user.is_authenticated:
-            is_registered_expr = Exists(
-                Registration.objects.filter(
-                    event=OuterRef("pk"),
-                    user=user,
-                    status=Registration.Status.ACTIVE,
-                )
-            )
-        else:
-            is_registered_expr = Value(False, output_field=BooleanField())
-
-        # N+1 muammosi bo'lmasligi uchun hisoblanadigan maydonlar bitta SQL so'rovda olinadi
-        return Event.objects.annotate(
-            registered_count=Count(
-                "registrations",
-                filter=Q(registrations__status=Registration.Status.ACTIVE),
-            ),
-            is_registered=is_registered_expr,
-        ).order_by("start_at")
+        return services.get_events_queryset(user=self.request.user)
 
     def get_serializer_class(self) -> type[serializers.ModelSerializer]:
         if self.action == "list":
@@ -328,12 +309,7 @@ class EventViewSet(viewsets.ModelViewSet):
     )
     def participants(self, request: Request, pk: int | None = None) -> Response:
         event = self.get_object()
-        # N+1 muammosi bo'lmasligi uchun user ma'lumotlari select_related bilan birga olinadi
-        queryset = (
-            event.registrations.filter(status=Registration.Status.ACTIVE)
-            .select_related("user")
-            .order_by("-created_at")
-        )
+        queryset = services.get_active_participants_queryset(event=event)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = ParticipantSerializer(page, many=True)
@@ -367,9 +343,7 @@ class MyRegistrationListView(generics.ListAPIView):
     filterset_class = RegistrationFilter
 
     def get_queryset(self) -> QuerySet[Registration]:
-        # BR-10: Foydalanuvchi faqat o'zining registration'larini ko'radi
-        return (
-            Registration.objects.filter(user=self.request.user)
-            .select_related("event")
-            .order_by("-created_at")
-        )
+        # Swagger schema generatsiyasida AnonymousUser bilan xato chiqmasligi uchun
+        if getattr(self, "swagger_fake_view", False):
+            return Registration.objects.none()
+        return services.get_user_registrations_queryset(user=self.request.user)

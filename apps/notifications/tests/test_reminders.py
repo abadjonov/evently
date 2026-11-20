@@ -94,11 +94,11 @@ def test_atomic_update_skips_registration_already_claimed_by_parallel_cron(user,
     mock_send.assert_not_called()
 
 
-@pytest.mark.django_db
-@override_settings(REMINDER_HOURS_BEFORE=24)
-def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, admin_user):
-    user.telegram_chat_id = 1001
-    user.save(update_fields=["telegram_chat_id"])
+def _create_skipped_reminder_cases(
+    user: User,
+    admin_user: User,
+    due_event: Event,
+) -> list[Registration]:
     cancelled_user = User.objects.create_user(
         email="cancelled@example.com",
         password="StrongPassword123!",
@@ -108,8 +108,6 @@ def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, ad
         email="unlinked@example.com",
         password="StrongPassword123!",
     )
-
-    due_event = _create_event(admin_user, hours_from_now=6, title="Yaqin ochiq tadbir")
     far_event = _create_event(admin_user, hours_from_now=48, title="Uzoq tadbir")
     started_event = _create_event(admin_user, hours_from_now=-1, title="Boshlangan tadbir")
     closed_event = _create_event(
@@ -118,9 +116,7 @@ def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, ad
         status=Event.Status.CLOSED,
         title="Yopilgan tadbir",
     )
-
-    eligible = Registration.objects.create(user=user, event=due_event)
-    skipped_regs = [
+    return [
         Registration.objects.create(user=user, event=far_event),
         Registration.objects.create(user=user, event=started_event),
         Registration.objects.create(
@@ -131,6 +127,17 @@ def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, ad
         Registration.objects.create(user=user, event=closed_event),
         Registration.objects.create(user=unlinked_user, event=due_event),
     ]
+
+
+@pytest.mark.django_db
+@override_settings(REMINDER_HOURS_BEFORE=24)
+def test_reminders_skip_far_cancelled_closed_started_and_unlinked_users(user, admin_user):
+    user.telegram_chat_id = 1001
+    user.save(update_fields=["telegram_chat_id"])
+    due_event = _create_event(admin_user, hours_from_now=6, title="Yaqin ochiq tadbir")
+
+    eligible = Registration.objects.create(user=user, event=due_event)
+    skipped_regs = _create_skipped_reminder_cases(user, admin_user, due_event)
 
     with patch("apps.notifications.services.send_message", return_value=True) as mock_send:
         call_command("send_event_reminders", stdout=StringIO())

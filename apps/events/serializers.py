@@ -2,7 +2,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.events.exceptions import BusinessError
+from apps.events import services
 from apps.events.models import Event, Registration
 
 
@@ -144,14 +144,10 @@ class EventDetailSerializer(BaseEventSerializer):
 
         # BR-9: Tahrirlashda capacity faol qatnashuvchilar sonidan kam bo'lmasligi shart
         if self.instance is not None and value is not None:
-            active_count = self.instance.registrations.filter(
-                status=Registration.Status.ACTIVE,
-            ).count()
-            if value < active_count:
-                raise BusinessError(
-                    detail="Joylar soni hozirgi qatnashuvchilar sonidan kam bo'lishi mumkin emas.",
-                    code="capacity_too_low",
-                )
+            services.validate_capacity_not_below_active(
+                event=self.instance,
+                capacity=value,
+            )
         return value
 
     def validate(self, attrs: dict) -> dict:
