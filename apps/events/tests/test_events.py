@@ -1,10 +1,13 @@
 from datetime import timedelta
+from io import StringIO
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
 
 from apps.events.models import Event, Registration
+from apps.users.models import User
 
 EVENTS_URL = "/api/v1/events/"
 
@@ -364,3 +367,24 @@ def test_401_403_404_errors_include_detail_and_code(api_client, user):
     assert not_found_resp.status_code == status.HTTP_404_NOT_FOUND
     assert "detail" in not_found_resp.data
     assert not_found_resp.data["code"] == "not_found"
+
+
+@pytest.mark.django_db
+def test_seed_data_command_creates_records_and_is_idempotent():
+    first_out = StringIO()
+    call_command("seed_data", stdout=first_out)
+
+    assert User.objects.filter(role=User.Role.ADMIN).count() == 2
+    assert User.objects.filter(role=User.Role.USER).count() == 10
+    assert Event.objects.count() == 15
+    assert Registration.objects.count() == 15
+    assert "2 admin, 10 user, 15 tadbir, 15 yozilish." in first_out.getvalue()
+
+    second_out = StringIO()
+    call_command("seed_data", stdout=second_out)
+
+    assert User.objects.filter(role=User.Role.ADMIN).count() == 2
+    assert User.objects.filter(role=User.Role.USER).count() == 10
+    assert Event.objects.count() == 15
+    assert Registration.objects.count() == 15
+    assert "0 admin, 0 user, 0 tadbir, 0 yozilish." in second_out.getvalue()

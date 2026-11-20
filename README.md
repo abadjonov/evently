@@ -133,6 +133,9 @@ python -m bot.main
 
 # 10. Eslatmalarni qo'lda tekshirish
 python manage.py send_event_reminders
+
+# (Ixtiyoriy) Demo ma'lumotlar yaratish (2 admin, 10 user, 15 tadbir)
+python manage.py seed_data
 ```
 
 ### Eslatmalar uchun cron sozlash (Linux / server)
