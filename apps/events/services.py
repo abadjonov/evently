@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.events.exceptions import BusinessError
 from apps.events.models import Event, Registration
+from apps.notifications import services as notification_services
 from apps.users.models import User
 
 
@@ -48,20 +49,25 @@ def register_for_event(*, user: User, event: Event) -> Registration:
             existing.status = Registration.Status.ACTIVE
             existing.cancelled_at = None
             existing.save(update_fields=["status", "cancelled_at"])
-            return existing
+            registration = existing
+        else:
+            try:
+                with transaction.atomic():
+                    registration = Registration.objects.create(
+                        user=user,
+                        event=locked_event,
+                        status=Registration.Status.ACTIVE,
+                    )
+            except IntegrityError as exc:
+                raise BusinessError(
+                    detail="Siz bu tadbirga allaqachon yozilgansiz.",
+                    code="already_registered",
+                ) from exc
 
-        try:
-            with transaction.atomic():
-                return Registration.objects.create(
-                    user=user,
-                    event=locked_event,
-                    status=Registration.Status.ACTIVE,
-                )
-        except IntegrityError as exc:
-            raise BusinessError(
-                detail="Siz bu tadbirga allaqachon yozilgansiz.",
-                code="already_registered",
-            ) from exc
+        # Xabarnoma faqat DB tranzaksiyasi commit bo'lgandan keyin yuboriladi
+        reg_id = registration.id
+        transaction.on_commit(lambda: notification_services.notify_registration(reg_id))
+        return registration
 
 
 def unregister_from_event(*, user: User, event: Event) -> Registration:
