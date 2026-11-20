@@ -1,4 +1,5 @@
 from django.db.models import QuerySet
+from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -308,7 +309,8 @@ class EventViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAdmin],
     )
     def participants(self, request: Request, pk: int | None = None) -> Response:
-        event = self.get_object()
+        # Qatnashuvchilar uchun Event'ning og'ir annotate so'rovi kerak emas
+        event = get_object_or_404(Event, pk=pk)
         queryset = services.get_active_participants_queryset(event=event)
         page = self.paginate_queryset(queryset)
         if page is not None:

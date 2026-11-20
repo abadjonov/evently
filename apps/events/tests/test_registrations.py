@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from apps.events.models import Event, Registration
+from apps.users.models import User
 
 EVENTS_URL = "/api/v1/events/"
 
@@ -280,3 +281,63 @@ def test_unlimited_capacity_event_allows_multiple_registrations(api_client, user
     second_resp = api_client.post(f"{EVENTS_URL}{event.id}/register/")
     assert second_resp.status_code == status.HTTP_201_CREATED
     assert Registration.objects.filter(event=event, status=Registration.Status.ACTIVE).count() == 2
+
+
+@pytest.mark.django_db
+def test_participants_list_no_n_plus_one_queries(
+    api_client,
+    admin_user,
+    django_assert_num_queries,
+):
+    event = _create_open_event(admin_user, capacity=50)
+    for idx in range(2):
+        participant = User.objects.create_user(
+            email=f"part{idx}@example.com",
+            password="StrongPassword123!",
+            first_name=f"User{idx}",
+        )
+        Registration.objects.create(user=participant, event=event)
+
+    api_client.force_authenticate(user=admin_user)
+    with django_assert_num_queries(3):
+        resp_2 = api_client.get(f"{EVENTS_URL}{event.id}/participants/")
+        assert resp_2.status_code == status.HTTP_200_OK
+        assert len(resp_2.data["results"]) == 2
+
+    for idx in range(2, 8):
+        participant = User.objects.create_user(
+            email=f"part{idx}@example.com",
+            password="StrongPassword123!",
+            first_name=f"User{idx}",
+        )
+        Registration.objects.create(user=participant, event=event)
+
+    with django_assert_num_queries(3):
+        resp_8 = api_client.get(f"{EVENTS_URL}{event.id}/participants/")
+        assert resp_8.status_code == status.HTTP_200_OK
+        assert len(resp_8.data["results"]) == 8
+
+
+@pytest.mark.django_db
+def test_my_registrations_list_no_n_plus_one_queries(
+    api_client,
+    user,
+    admin_user,
+    django_assert_num_queries,
+):
+    for _ in range(2):
+        Registration.objects.create(user=user, event=_create_open_event(admin_user))
+
+    api_client.force_authenticate(user=user)
+    with django_assert_num_queries(2):
+        resp_2 = api_client.get("/api/v1/me/registrations/")
+        assert resp_2.status_code == status.HTTP_200_OK
+        assert len(resp_2.data["results"]) == 2
+
+    for _ in range(6):
+        Registration.objects.create(user=user, event=_create_open_event(admin_user))
+
+    with django_assert_num_queries(2):
+        resp_8 = api_client.get("/api/v1/me/registrations/")
+        assert resp_8.status_code == status.HTTP_200_OK
+        assert len(resp_8.data["results"]) == 8
