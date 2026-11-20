@@ -1,9 +1,30 @@
+from datetime import timedelta
+from unittest.mock import patch
+
 import pytest
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework import status
+
+from apps.events.models import Event
+from apps.users.models import User
 
 TELEGRAM_LINK_URL = "/api/v1/telegram/link/"
 TELEGRAM_CONFIRM_URL = "/api/v1/telegram/confirm/"
+
+
+def _create_upcoming_event(admin_user: User, capacity: int | None = 10) -> Event:
+    now = timezone.now()
+    return Event.objects.create(
+        title="Django REST Framework asoslari",
+        description="Amaliy master-klass",
+        event_type=Event.EventType.MASTERCLASS,
+        location="IT Park, 3-qavat, 301-xona",
+        start_at=now + timedelta(days=2),
+        end_at=now + timedelta(days=2, hours=3),
+        capacity=capacity,
+        created_by=admin_user,
+    )
 
 
 @pytest.mark.django_db
@@ -78,3 +99,66 @@ def test_telegram_confirm_saves_chat_id_and_clears_token(api_client, user):
     )
     assert reuse_resp.status_code == status.HTTP_400_BAD_REQUEST
     assert reuse_resp.data["code"] == "invalid_token"
+
+
+@pytest.mark.django_db
+def test_registration_calls_notify_after_commit(
+    api_client,
+    user,
+    admin_user,
+    django_capture_on_commit_callbacks,
+):
+    user.telegram_chat_id = 1001
+    user.save(update_fields=["telegram_chat_id"])
+    admin_user.telegram_chat_id = 2002
+    admin_user.save(update_fields=["telegram_chat_id"])
+    User.objects.create_user(
+        email="unlinked-admin@example.com",
+        password="StrongPassword123!",
+        role=User.Role.ADMIN,
+    )
+    event = _create_upcoming_event(admin_user, capacity=10)
+    api_client.force_authenticate(user=user)
+
+    with patch("apps.notifications.services.send_message") as mock_send:
+        with django_capture_on_commit_callbacks(execute=True) as callbacks:
+            response = api_client.post(f"/api/v1/events/{event.id}/register/")
+            assert response.status_code == status.HTTP_201_CREATED
+            # Xabarnoma commit'dan oldin emas, faqat on_commit bosqichida yuborilishi kerak
+            assert mock_send.call_count == 0
+
+        assert len(callbacks) == 1
+        assert mock_send.call_count == 2
+        user_call, admin_call = mock_send.call_args_list
+        assert user_call.args[0] == 1001
+        assert "✅ Siz tadbirga muvaffaqiyatli yozildingiz!" in user_call.args[1]
+        assert event.title in user_call.args[1]
+        assert event.location in user_call.args[1]
+
+        assert admin_call.args[0] == 2002
+        assert "🆕 Yangi qatnashuvchi" in admin_call.args[1]
+        assert "Test User (+998901234567)" in admin_call.args[1]
+        assert "1 / 10" in admin_call.args[1]
+
+
+@pytest.mark.django_db
+def test_failed_registration_does_not_schedule_notify(
+    api_client,
+    user,
+    admin_user,
+    django_capture_on_commit_callbacks,
+):
+    user.telegram_chat_id = 1001
+    user.save(update_fields=["telegram_chat_id"])
+    event = _create_upcoming_event(admin_user, capacity=10)
+    event.status = Event.Status.CLOSED
+    event.save(update_fields=["status"])
+    api_client.force_authenticate(user=user)
+
+    with patch("apps.notifications.services.send_message") as mock_send:
+        with django_capture_on_commit_callbacks(execute=True) as callbacks:
+            response = api_client.post(f"/api/v1/events/{event.id}/register/")
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        assert callbacks == []
+        mock_send.assert_not_called()
