@@ -1,9 +1,11 @@
 import logging
 import secrets
+from datetime import datetime
 
 import httpx
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.events.exceptions import BusinessError
 from apps.users.models import User
@@ -11,6 +13,29 @@ from apps.users.models import User
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT = 10.0
+
+UZBEK_MONTHS: dict[int, str] = {
+    1: "yanvar",
+    2: "fevral",
+    3: "mart",
+    4: "aprel",
+    5: "may",
+    6: "iyun",
+    7: "iyul",
+    8: "avgust",
+    9: "sentabr",
+    10: "oktabr",
+    11: "noyabr",
+    12: "dekabr",
+}
+
+
+def format_uzbek_datetime(dt: datetime) -> str:
+    """Sanani mahalliy vaqt mintaqasida o'zbekcha ko'rinishga keltiradi ("5-dekabr, 14:00")."""
+    # Bazadan UTC qaytgan vaqtni foydalanuvchiga Asia/Tashkent vaqtida ko'rsatamiz
+    local_dt = timezone.localtime(dt) if timezone.is_aware(dt) else dt
+    month_name = UZBEK_MONTHS[local_dt.month]
+    return f"{local_dt.day}-{month_name}, {local_dt:%H:%M}"
 
 
 def create_telegram_link(user: User) -> str:
