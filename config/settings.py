@@ -145,6 +145,19 @@ SPECTACULAR_SETTINGS = {
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },
+    "TAGS": [
+        {"name": "auth", "description": "Ro'yxatdan o'tish, JWT login va profil boshqaruvi"},
+        {"name": "events", "description": "Tadbirlar ro'yxati, CRUD, yopish va qatnashuvchilar"},
+        {
+            "name": "registrations",
+            "description": "Tadbirga yozilish, chiqish va mening tadbirlarim",
+        },
+        {"name": "telegram", "description": "Telegram hisobini bog'lash va bot tasdiqlash"},
+    ],
+    "ENUM_NAME_OVERRIDES": {
+        "EventStatusEnum": "apps.events.models.Event.Status",
+        "RegistrationStatusEnum": "apps.events.models.Registration.Status",
+    },
 }
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")
