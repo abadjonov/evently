@@ -21,6 +21,7 @@ env = environ.Env(
     TELEGRAM_BOT_USERNAME=(str, ""),
     BOT_API_SECRET=(str, ""),
     BACKEND_API_URL=(str, "http://localhost:8000/api/v1"),
+    REMINDER_HOURS_BEFORE=(int, 24),
 )
 
 # Lokal muhitda .env fayli mavjud bo'lsa, undan o'zgaruvchilarni o'qiymiz
@@ -152,6 +153,8 @@ TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME")
 BOT_API_SECRET = env("BOT_API_SECRET")
 BACKEND_API_URL = env("BACKEND_API_URL")
+
+REMINDER_HOURS_BEFORE = env.int("REMINDER_HOURS_BEFORE")
 
 # Telegram xabarnoma xatolari so'rovni buzmasdan konsol/log'da ko'rinishi uchun
 LOGGING = {
