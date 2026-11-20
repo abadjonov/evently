@@ -1,7 +1,8 @@
 from django.urls import path
 
-from apps.notifications.views import TelegramLinkView
+from apps.notifications.views import TelegramConfirmView, TelegramLinkView
 
 urlpatterns = [
     path("telegram/link/", TelegramLinkView.as_view(), name="telegram-link"),
+    path("telegram/confirm/", TelegramConfirmView.as_view(), name="telegram-confirm"),
 ]

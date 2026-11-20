@@ -3,7 +3,9 @@ import secrets
 
 import httpx
 from django.conf import settings
+from django.db import IntegrityError, transaction
 
+from apps.events.exceptions import BusinessError
 from apps.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,36 @@ def create_telegram_link(user: User) -> str:
     user.save(update_fields=["telegram_link_token"])
     bot_username = settings.TELEGRAM_BOT_USERNAME.lstrip("@")
     return f"https://t.me/{bot_username}?start={token}"
+
+
+def confirm_telegram_link(*, token: str, chat_id: int) -> User:
+    """Bog'lash tokenini tekshirib, telegram_chat_id ni saqlaydi va tokenni o'chiradi."""
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(telegram_link_token=token).first()
+        if user is None:
+            raise BusinessError(
+                detail="Bog'lash tokeni yaroqsiz yoki eskirgan.",
+                code="invalid_token",
+            )
+
+        # Bitta Telegram chat_id faqat bitta foydalanuvchiga bog'lanishi mumkin
+        if User.objects.filter(telegram_chat_id=chat_id).exclude(pk=user.pk).exists():
+            raise BusinessError(
+                detail="Bu Telegram hisobi boshqa foydalanuvchiga bog'langan.",
+                code="telegram_already_linked",
+            )
+
+        user.telegram_chat_id = chat_id
+        user.telegram_link_token = None
+        try:
+            with transaction.atomic():
+                user.save(update_fields=["telegram_chat_id", "telegram_link_token"])
+        except IntegrityError as exc:
+            raise BusinessError(
+                detail="Bu Telegram hisobi boshqa foydalanuvchiga bog'langan.",
+                code="telegram_already_linked",
+            ) from exc
+        return user
 
 
 def send_message(chat_id: int, text: str) -> bool:
