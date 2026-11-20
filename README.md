@@ -892,6 +892,14 @@ python -m bot.main
 python manage.py send_event_reminders
 ```
 
+### Eslatmalar uchun cron sozlash (Linux/server)
+
+Eslatmalar har 10 daqiqada avtomatik yuborilishi uchun `crontab -e` orqali quyidagi qatorni qo‘shing (`REMINDER_HOURS_BEFORE` `.env` orqali boshqariladi, default `24` soat):
+
+```cron
+*/10 * * * * cd /path/to/evently && .venv/bin/python manage.py send_event_reminders >> /var/log/evently_reminders.log 2>&1
+```
+
 Shundan keyin:
 
 - Swagger: http://localhost:8000/api/docs/
