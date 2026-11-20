@@ -256,15 +256,28 @@ def process_due_reminders(
     now: datetime | None = None,
     hours_before: int | None = None,
 ) -> ReminderStats:
-    """Vaqti kelgan barcha tadbir eslatmalarini yuboradi va natija sonini qaytaradi."""
+    """Vaqti kelgan eslatmalarni dublikatsiz (atomik update bilan) yuboradi."""
     sent = 0
     failed = 0
+    skipped = 0
     registrations = get_due_reminder_registrations(now=now, hours_before=hours_before)
+
     for registration in registrations:
+        # Parallel cron jarayonlari ustma-ust tushsa ham faqat bittasi yozuvni band qiladi
+        claimed = Registration.objects.filter(
+            pk=registration.pk,
+            status=Registration.Status.ACTIVE,
+            reminder_sent=False,
+        ).update(reminder_sent=True)
+        if claimed == 0:
+            skipped += 1
+            continue
+
         if send_event_reminder(registration):
-            registration.reminder_sent = True
-            registration.save(update_fields=["reminder_sent"])
             sent += 1
         else:
+            # Yuborish muvaffaqiyatsiz bo'lsa keyingi cron urinishida qayta yuborish uchun ochamiz
+            Registration.objects.filter(pk=registration.pk).update(reminder_sent=False)
             failed += 1
-    return ReminderStats(sent=sent, failed=failed)
+
+    return ReminderStats(sent=sent, failed=failed, skipped=skipped)
