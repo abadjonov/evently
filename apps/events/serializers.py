@@ -2,7 +2,63 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.events.models import Event
+from apps.events.exceptions import BusinessError
+from apps.events.models import Event, Registration
+
+
+class BusinessErrorSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    code = serializers.CharField()
+
+
+class EventBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ("id", "title", "start_at", "location")
+        read_only_fields = fields
+
+
+class RegistrationSerializer(serializers.ModelSerializer):
+    event = EventBriefSerializer(read_only=True)
+
+    class Meta:
+        model = Registration
+        fields = ("id", "event", "status", "created_at")
+        read_only_fields = fields
+
+
+class MyRegistrationSerializer(serializers.ModelSerializer):
+    event = EventBriefSerializer(read_only=True)
+
+    class Meta:
+        model = Registration
+        fields = ("id", "event", "status", "created_at", "cancelled_at")
+        read_only_fields = fields
+
+
+class ParticipantSerializer(serializers.ModelSerializer):
+    registration_id = serializers.IntegerField(source="id", read_only=True)
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    full_name = serializers.SerializerMethodField()
+    email = serializers.EmailField(source="user.email", read_only=True)
+    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    registered_at = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = Registration
+        fields = (
+            "registration_id",
+            "user_id",
+            "full_name",
+            "email",
+            "phone_number",
+            "registered_at",
+        )
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField())
+    def get_full_name(self, obj: Registration) -> str:
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
 
 
 class BaseEventSerializer(serializers.ModelSerializer):
@@ -85,6 +141,17 @@ class EventDetailSerializer(BaseEventSerializer):
             raise serializers.ValidationError(
                 "Joylar soni kamida 1 bo'lishi yoki cheklanmagan (null) qoldirilishi kerak."
             )
+
+        # BR-9: Tahrirlashda capacity faol qatnashuvchilar sonidan kam bo'lmasligi shart
+        if self.instance is not None and value is not None:
+            active_count = self.instance.registrations.filter(
+                status=Registration.Status.ACTIVE,
+            ).count()
+            if value < active_count:
+                raise BusinessError(
+                    detail="Joylar soni hozirgi qatnashuvchilar sonidan kam bo'lishi mumkin emas.",
+                    code="capacity_too_low",
+                )
         return value
 
     def validate(self, attrs: dict) -> dict:

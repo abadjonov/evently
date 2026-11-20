@@ -2,7 +2,7 @@ import django_filters
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from apps.events.models import Event
+from apps.events.models import Event, Registration
 
 
 class EventFilter(django_filters.FilterSet):
@@ -21,3 +21,9 @@ class EventFilter(django_filters.FilterSet):
         if value:
             return queryset.filter(start_at__gt=timezone.now())
         return queryset
+
+
+class RegistrationFilter(django_filters.FilterSet):
+    class Meta:
+        model = Registration
+        fields = ("status",)
