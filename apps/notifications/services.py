@@ -209,3 +209,35 @@ def get_due_reminder_registrations(
         )
         .order_by("event__start_at", "id")
     )
+
+
+def build_event_reminder_text(event: Event) -> str:
+    """Tadbir boshlanishidan oldingi eslatma (T2) xabar matnini tayyorlaydi."""
+    formatted_date = format_uzbek_datetime(event.start_at)
+    return (
+        "⏰ Eslatma!\n\n"
+        "Ertaga siz yozilgan tadbir bo‘lib o‘tadi:\n"
+        f"📌 {event.title}\n"
+        f"🗓 {formatted_date}\n"
+        f"📍 {event.location}\n\n"
+        "Kechikmang! 🙂"
+    )
+
+
+def send_event_reminder(registration: Registration) -> bool:
+    """Bitta ro'yxatdan o'tish uchun Telegram eslatma xabarini yuboradi."""
+    chat_id = registration.user.telegram_chat_id
+    if chat_id is None:
+        return False
+
+    text = build_event_reminder_text(registration.event)
+    try:
+        return bool(send_message(chat_id, text))
+    except Exception as exc:
+        # Bitta foydalanuvchidagi Telegram xatosi qolgan eslatmalarni to'xtatmasligi kerak
+        logger.error(
+            "Telegram eslatma yuborishda xatolik (registration_id=%s, xato=%s).",
+            registration.pk,
+            type(exc).__name__,
+        )
+        return False
