@@ -166,3 +166,73 @@ Barcha maxfiy ma’lumotlar faqat `.env` faylida saqlanadi (`.env` `.gitignore` 
 | `BOT_API_SECRET` | tasodifiy uzun satr | Bot → backend `/telegram/confirm/` so‘rovlari uchun `X-Bot-Secret` kaliti |
 | `BACKEND_API_URL` | `http://localhost:8000/api/v1` | Bot ulanadigan backend API manzili |
 | `REMINDER_HOURS_BEFORE` | `24` | Tadbir boshlanishidan necha soat oldin eslatma yuborilishi |
+
+## API endpointlar
+
+Barcha endpointlar `/api/v1/` prefiksi bilan boshlanadi.
+
+### Auth (`auth`)
+
+| Method | Endpoint | Ruxsat | Tavsif |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/auth/register/` | Hamma | Yangi foydalanuvchi ro‘yxatdan o‘tishi (`role="user"`) |
+| `POST` | `/api/v1/auth/login/` | Hamma | Email + parol → `access` va `refresh` JWT token |
+| `POST` | `/api/v1/auth/token/refresh/` | Hamma | `refresh` token orqali yangi `access` token olish |
+| `GET` | `/api/v1/auth/me/` | Login qilgan | Joriy foydalanuvchi profili |
+| `PATCH` | `/api/v1/auth/me/` | Login qilgan | Profilni tahrirlash (`email` va `role` read-only) |
+
+### Tadbirlar (`events`)
+
+| Method | Endpoint | Ruxsat | Tavsif |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/events/` | Hamma | Tadbirlar ro‘yxati (`page`, `event_type`, `status`, `upcoming`, `search`, `ordering`) |
+| `GET` | `/api/v1/events/{id}/` | Hamma | Tadbir haqida batafsil (`registered_count`, `available_seats`, `is_finished`, `is_registered`) |
+| `POST` | `/api/v1/events/` | Faqat Admin | Yangi tadbir yaratish |
+| `PATCH` | `/api/v1/events/{id}/` | Faqat Admin | Tadbirni qisman tahrirlash (`PUT` o‘chirilgan) |
+| `DELETE` | `/api/v1/events/{id}/` | Faqat Admin | Tadbirni o‘chirish |
+| `POST` | `/api/v1/events/{id}/close/` | Faqat Admin | Tadbirni yopish (`status="closed"`) |
+| `GET` | `/api/v1/events/{id}/participants/` | Faqat Admin | Faol qatnashuvchilar ro‘yxati (sahifalangan) |
+
+### Ro‘yxatdan o‘tish (`registrations`)
+
+| Method | Endpoint | Ruxsat | Tavsif |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/events/{id}/register/` | Login qilgan | Tadbirga yozilish (`201 Created`, T1 Telegram xabari) |
+| `POST` | `/api/v1/events/{id}/unregister/` | Login qilgan | Tadbirdan chiqish (boshlanishidan oldin) |
+| `GET` | `/api/v1/me/registrations/` | Login qilgan | Foydalanuvchining o‘z ro‘yxatdan o‘tishlari (`?status=active\|cancelled`) |
+
+### Telegram (`telegram`)
+
+| Method | Endpoint | Ruxsat | Tavsif |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/telegram/link/` | Login qilgan | Bir martalik token yaratish va `https://t.me/<bot>?start=<token>` qaytarish |
+| `POST` | `/api/v1/telegram/confirm/` | Faqat Bot (`X-Bot-Secret`) | Tokenni tekshirish, `telegram_chat_id` ni saqlash va tokenni o‘chirish |
+
+### Xatolar formati
+
+- Biznes xatolari (`400`) hamda `401`/`403`/`404` xatolari yagona `{"detail": "...", "code": "..."}` formatida qaytariladi (`event_closed`, `event_started`, `already_registered`, `event_full`, `not_registered`, `capacity_too_low`, `invalid_token`, `telegram_already_linked`).
+- Maydon validatsiya xatolari (`400`) DRF standart formatida (`{"field": ["..."]}`) qaytadi.
+
+## Hujjatlar va Admin panel
+
+Server ishga tushgach (`python manage.py runserver`):
+
+- **Swagger UI:** http://localhost:8000/api/docs/ *(Bearer JWT token bilan to‘g‘ridan-to‘g‘ri sinash mumkin)*
+- **OpenAPI schema:** http://localhost:8000/api/schema/
+- **Django Admin:** http://localhost:8000/admin/
+
+## Testlar va kod sifati
+
+Testlarda Telegram API har doim `mock` qilinadi (haqiqiy Telegram'ga so‘rov yuborilmaydi).
+
+```powershell
+# Barcha avtomatik testlarni ishga tushirish
+pytest
+
+# Lint va formatlashni tekshirish
+ruff check .
+ruff format --check .
+
+# OpenAPI sxemasini ogohlantirishlarsiz tekshirish
+python manage.py spectacular --validate --fail-on-warn
+```
