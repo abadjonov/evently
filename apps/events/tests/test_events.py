@@ -345,3 +345,22 @@ def test_anonymous_user_gets_401_on_admin_event_actions(api_client, admin_user):
     assert api_client.delete(detail_url).status_code == 401
     assert api_client.post(f"{detail_url}close/").status_code == 401
     assert api_client.get(f"{detail_url}participants/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_401_403_404_errors_include_detail_and_code(api_client, user):
+    unauth_resp = api_client.post(EVENTS_URL, _valid_event_payload(), format="json")
+    assert unauth_resp.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "detail" in unauth_resp.data
+    assert unauth_resp.data["code"] == "not_authenticated"
+
+    api_client.force_authenticate(user=user)
+    forbidden_resp = api_client.post(EVENTS_URL, _valid_event_payload(), format="json")
+    assert forbidden_resp.status_code == status.HTTP_403_FORBIDDEN
+    assert "detail" in forbidden_resp.data
+    assert forbidden_resp.data["code"] == "permission_denied"
+
+    not_found_resp = api_client.get(f"{EVENTS_URL}999999/")
+    assert not_found_resp.status_code == status.HTTP_404_NOT_FOUND
+    assert "detail" in not_found_resp.data
+    assert not_found_resp.data["code"] == "not_found"
