@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.events.exceptions import BusinessError
+from apps.events.models import Event, Registration
 from apps.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -116,3 +117,69 @@ def send_message(chat_id: int, text: str) -> bool:
             type(exc).__name__,
         )
     return False
+
+
+def _build_user_registration_text(event: Event) -> str:
+    formatted_date = format_uzbek_datetime(event.start_at)
+    return (
+        "✅ Siz tadbirga muvaffaqiyatli yozildingiz!\n\n"
+        f"📌 {event.title}\n"
+        f"🗓 {formatted_date}\n"
+        f"📍 {event.location}"
+    )
+
+
+def _build_admin_registration_text(user: User, event: Event, active_count: int) -> str:
+    full_name = user.get_full_name().strip() or user.email
+    participant = f"{full_name} ({user.phone_number})" if user.phone_number else full_name
+    seats = (
+        f"{active_count} / {event.capacity}"
+        if event.capacity is not None
+        else f"{active_count} / cheklanmagan"
+    )
+    return f"🆕 Yangi qatnashuvchi\n\n👤 {participant}\n📌 {event.title}\n👥 Band joylar: {seats}"
+
+
+def _safe_send_message(chat_id: int, text: str) -> None:
+    # send_message ichida xato tutiladi, lekin tashqi/mock xatolar ham oqimni buzmasligi kerak
+    try:
+        send_message(chat_id, text)
+    except Exception as exc:
+        logger.error(
+            "Telegram xabarnoma yuborishda xatolik (chat_id=%s, xato=%s).",
+            chat_id,
+            type(exc).__name__,
+        )
+
+
+def notify_registration(registration_id: int) -> None:
+    """Yangi ro'yxatdan o'tish haqida foydalanuvchi va bog'langan adminlarga xabar yuboradi."""
+    registration = (
+        Registration.objects.select_related("user", "event").filter(pk=registration_id).first()
+    )
+    if registration is None:
+        logger.warning("Xabarnoma uchun Registration topilmadi (id=%s).", registration_id)
+        return
+
+    user = registration.user
+    event = registration.event
+
+    if user.telegram_chat_id is not None:
+        _safe_send_message(user.telegram_chat_id, _build_user_registration_text(event))
+
+    admin_chat_ids = list(
+        User.objects.filter(
+            role=User.Role.ADMIN,
+            telegram_chat_id__isnull=False,
+        ).values_list("telegram_chat_id", flat=True)
+    )
+    if not admin_chat_ids:
+        return
+
+    active_count = Registration.objects.filter(
+        event=event,
+        status=Registration.Status.ACTIVE,
+    ).count()
+    admin_text = _build_admin_registration_text(user, event, active_count)
+    for chat_id in admin_chat_ids:
+        _safe_send_message(chat_id, admin_text)
