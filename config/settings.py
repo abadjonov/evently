@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    CSRF_TRUSTED_ORIGINS=(list, []),
     TIME_ZONE=(str, "Asia/Tashkent"),
     DB_NAME=(str, "evently"),
     DB_USER=(str, "evently"),
@@ -25,13 +26,26 @@ env = environ.Env(
 )
 
 # Lokal muhitda .env fayli mavjud bo'lsa, undan o'zgaruvchilarni o'qiymiz
-environ.Env.read_env(BASE_DIR / ".env")
+env_file = BASE_DIR / ".env"
+if env_file.exists():
+    environ.Env.read_env(env_file)
 
 SECRET_KEY = env("SECRET_KEY")
 
 DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
+
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS")
+
+# Render tashqi domenini avtomatik ALLOWED_HOSTS va CSRF_TRUSTED_ORIGINS ga qo'shamiz
+render_external_hostname = env("RENDER_EXTERNAL_HOSTNAME", default="").strip()
+if render_external_hostname:
+    if render_external_hostname not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(render_external_hostname)
+    render_origin = f"https://{render_external_hostname}"
+    if render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(render_origin)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -161,6 +175,16 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")
+
+# Production muhitida (DEBUG=False) reverse proxy ortidagi HTTPS himoyasini yoqamiz
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Telegram sozlamalari faqat .env dan o'qiladi, kodga yozilmaydi
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN")
