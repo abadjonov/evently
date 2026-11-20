@@ -1,11 +1,23 @@
 import logging
+import secrets
 
 import httpx
 from django.conf import settings
 
+from apps.users.models import User
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT = 10.0
+
+
+def create_telegram_link(user: User) -> str:
+    """Foydalanuvchi uchun bir martalik bog'lash tokeni va Telegram havolasini yaratadi."""
+    token = secrets.token_urlsafe(16)
+    user.telegram_link_token = token
+    user.save(update_fields=["telegram_link_token"])
+    bot_username = settings.TELEGRAM_BOT_USERNAME.lstrip("@")
+    return f"https://t.me/{bot_username}?start={token}"
 
 
 def send_message(chat_id: int, text: str) -> bool:
