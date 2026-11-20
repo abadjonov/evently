@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 from rest_framework import status
 
@@ -247,3 +248,35 @@ def test_cannot_register_after_admin_closes_event(api_client, user, admin_user):
     reg_resp = api_client.post(f"{EVENTS_URL}{event.id}/register/")
     assert reg_resp.status_code == status.HTTP_400_BAD_REQUEST
     assert reg_resp.data["code"] == "event_closed"
+
+
+@pytest.mark.django_db
+def test_anonymous_user_gets_401_on_unregister_and_my_registrations(api_client, admin_user):
+    event = _create_open_event(admin_user)
+
+    assert api_client.post(f"{EVENTS_URL}{event.id}/unregister/").status_code == 401
+    assert api_client.get("/api/v1/me/registrations/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_registration_unique_constraint_enforced_at_db_level(user, admin_user):
+    event = _create_open_event(admin_user)
+    Registration.objects.create(user=user, event=event)
+
+    # BR-1: Servis chetlab o'tilsa ham DB UniqueConstraint takroriy yozuvni bloklaydi
+    with pytest.raises(IntegrityError):
+        Registration.objects.create(user=user, event=event)
+
+
+@pytest.mark.django_db
+def test_unlimited_capacity_event_allows_multiple_registrations(api_client, user, admin_user):
+    event = _create_open_event(admin_user, capacity=None)
+
+    api_client.force_authenticate(user=user)
+    first_resp = api_client.post(f"{EVENTS_URL}{event.id}/register/")
+    assert first_resp.status_code == status.HTTP_201_CREATED
+
+    api_client.force_authenticate(user=admin_user)
+    second_resp = api_client.post(f"{EVENTS_URL}{event.id}/register/")
+    assert second_resp.status_code == status.HTTP_201_CREATED
+    assert Registration.objects.filter(event=event, status=Registration.Status.ACTIVE).count() == 2

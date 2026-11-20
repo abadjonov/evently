@@ -217,3 +217,24 @@ def test_send_message_logs_error_without_exposing_token(caplog):
     assert result is False
     assert len(caplog.records) == 1
     assert "TOP_SECRET_TOKEN" not in caplog.text
+
+
+@pytest.mark.django_db
+@override_settings(BOT_API_SECRET="super-secret")
+def test_telegram_confirm_rejects_chat_id_linked_to_another_user(api_client, user, admin_user):
+    admin_user.telegram_chat_id = 987654321
+    admin_user.save(update_fields=["telegram_chat_id"])
+    user.telegram_link_token = "user-token"
+    user.save(update_fields=["telegram_link_token"])
+
+    response = api_client.post(
+        TELEGRAM_CONFIRM_URL,
+        {"token": "user-token", "chat_id": 987654321},
+        format="json",
+        HTTP_X_BOT_SECRET="super-secret",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["code"] == "telegram_already_linked"
+    user.refresh_from_db()
+    assert user.telegram_chat_id is None

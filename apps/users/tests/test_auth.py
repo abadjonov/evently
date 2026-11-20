@@ -89,3 +89,66 @@ def test_register_and_patch_me_ignore_admin_role(api_client, user):
     user.refresh_from_db()
     assert user.role == User.Role.USER
     assert user.first_name == "Updated"
+
+
+@pytest.mark.django_db
+def test_token_refresh_returns_new_access_token(api_client, user):
+    login_resp = api_client.post(
+        LOGIN_URL,
+        {"email": user.email, "password": "StrongPassword123!"},
+        format="json",
+    )
+    refresh_token = login_resp.data["refresh"]
+
+    refresh_resp = api_client.post(
+        "/api/v1/auth/token/refresh/",
+        {"refresh": refresh_token},
+        format="json",
+    )
+
+    assert refresh_resp.status_code == status.HTTP_200_OK
+    assert "access" in refresh_resp.data
+
+
+@pytest.mark.django_db
+def test_me_requires_auth_and_email_is_read_only(api_client, user):
+    guest_resp = api_client.get(ME_URL)
+    assert guest_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    api_client.force_authenticate(user=user)
+    get_resp = api_client.get(ME_URL)
+    assert get_resp.status_code == status.HTTP_200_OK
+    assert get_resp.data["email"] == user.email
+
+    patch_resp = api_client.patch(
+        ME_URL,
+        {"email": "other@example.com", "last_name": "Updated"},
+        format="json",
+    )
+    assert patch_resp.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.email == "user@example.com"
+    assert user.last_name == "Updated"
+
+
+@pytest.mark.django_db
+def test_register_validation_password_mismatch_and_invalid_phone(api_client):
+    mismatch_payload = {
+        "email": "mismatch@example.com",
+        "password": "StrongPass123!",
+        "password_confirm": "DifferentPass123!",
+        "phone_number": "+998901234567",
+    }
+    mismatch_resp = api_client.post(REGISTER_URL, mismatch_payload, format="json")
+    assert mismatch_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "password_confirm" in mismatch_resp.data
+
+    bad_phone_payload = {
+        "email": "badphone@example.com",
+        "password": "StrongPass123!",
+        "password_confirm": "StrongPass123!",
+        "phone_number": "901234567",
+    }
+    phone_resp = api_client.post(REGISTER_URL, bad_phone_payload, format="json")
+    assert phone_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "phone_number" in phone_resp.data

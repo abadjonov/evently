@@ -293,3 +293,55 @@ def test_event_list_no_n_plus_one_queries(api_client, user, admin_user, django_a
     with django_assert_num_queries(2):
         resp_8 = api_client.get(EVENTS_URL)
         assert len(resp_8.data["results"]) == 8
+
+
+@pytest.mark.django_db
+def test_event_capacity_zero_and_patch_end_before_start_fail(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+
+    zero_cap_payload = _valid_event_payload()
+    zero_cap_payload["capacity"] = 0
+    zero_resp = api_client.post(EVENTS_URL, zero_cap_payload, format="json")
+    assert zero_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "capacity" in zero_resp.data
+
+    event = _create_event(admin_user)
+    patch_resp = api_client.patch(
+        f"{EVENTS_URL}{event.id}/",
+        {"end_at": (event.start_at - timedelta(minutes=30)).isoformat()},
+        format="json",
+    )
+    assert patch_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "end_at" in patch_resp.data
+
+
+@pytest.mark.django_db
+def test_event_is_finished_computed_field(api_client, admin_user):
+    now = timezone.now()
+    finished = Event.objects.create(
+        title="Tugagan tadbir",
+        description="Tavsif",
+        event_type=Event.EventType.SEMINAR,
+        location="Toshkent",
+        start_at=now - timedelta(hours=4),
+        end_at=now - timedelta(hours=1),
+        created_by=admin_user,
+    )
+    upcoming = _create_event(admin_user)
+
+    finished_resp = api_client.get(f"{EVENTS_URL}{finished.id}/")
+    upcoming_resp = api_client.get(f"{EVENTS_URL}{upcoming.id}/")
+
+    assert finished_resp.data["is_finished"] is True
+    assert upcoming_resp.data["is_finished"] is False
+
+
+@pytest.mark.django_db
+def test_anonymous_user_gets_401_on_admin_event_actions(api_client, admin_user):
+    event = _create_event(admin_user)
+    detail_url = f"{EVENTS_URL}{event.id}/"
+
+    assert api_client.patch(detail_url, {"title": "X"}, format="json").status_code == 401
+    assert api_client.delete(detail_url).status_code == 401
+    assert api_client.post(f"{detail_url}close/").status_code == 401
+    assert api_client.get(f"{detail_url}participants/").status_code == 401
